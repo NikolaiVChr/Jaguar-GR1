@@ -27,8 +27,6 @@ var mlw_max=getprop("payload/d-config/mlw_max"); #
 var auto_flare_caller = getprop("payload/d-config/auto_flare_caller"); # If damage.nas should detect flare releases, or if function is called from somewhere in aircraft
 ############################################################################################################################
 
-var TRUE  = 1;
-var FALSE = 0;
 
 var hp = hp_max;
 setprop("sam/damage", math.max(0,100*hp/hp_max));#used in HUD
@@ -166,6 +164,8 @@ var warheads = {
     "Flare":             [95,    0.00,0,0],
     "3M9":               [96,  125.00,0,0],# 3M9M3 Missile used with 2K12/SA-6
     "5V28V":             [97,  478.00,0,0],# Missile used with S-200D/SA-5
+    "AIM-9X":            [98,   20.80,0,0],
+    "R-23R":             [99,   55.00,0,0],# mig23 fox 1
 };
 
 var AIR_RADAR = "air";
@@ -183,9 +183,12 @@ var radar_signatures = {
                 "m2000-5B":                 AIR_RADAR,
                 "MiG-21bis":                AIR_RADAR,
                 "MiG-21MF-75":              AIR_RADAR,
+                "Mig-23MLD":                AIR_RADAR,
                 "MiG-29":                   AIR_RADAR,
                 "SU-27":                    AIR_RADAR,
                 "EC-137R":                  AIR_RADAR,
+                "E-3R":                     AIR_RADAR,
+                "E-3":                      AIR_RADAR,
                 "RC-137R":                  AIR_RADAR,
                 "E-8R":                     AIR_RADAR,
                 "EC-137D":                  AIR_RADAR,
@@ -194,7 +197,7 @@ var radar_signatures = {
                 "s-200":                    "gnd-05",
                 "ZSU-23-4M":                "gnd-23",
                 "S-75":                     "gnd-02",
-                "buk-m2":                   "gnd-11",
+                "buk-m2":                   "gnd-17",
                 "s-300":                    "gnd-20",
                 "MIM104D":                  "gnd-p2",
                 "missile_frigate":          "gnd-nk",
@@ -243,6 +246,10 @@ for(var myid = 0;myid<size(k);myid+=1) {
   }
 }
 
+var crater_model0 = getprop("payload/armament/models") ~ "crater_small.xml";
+var crater_model1 = getprop("payload/armament/models") ~ "crater_big.xml";
+var crater_model2 = getprop("payload/armament/models") ~ "bomb_hit_smoke.xml";
+
 #==================================================================
 #                       Notification processing
 #==================================================================
@@ -283,6 +290,7 @@ var DamageRecipient =
 #                      " Flags=",notification.Flags,
 #                      " Radar=",bits.test(notification.Flags, 0),
 #                      " Thrust=",bits.test(notification.Flags, 1));
+#                      " CWI=",bits.test(notification.Flags, 2));
                 #
                 # todo:
                 #   animate missiles
@@ -398,6 +406,7 @@ var DamageRecipient =
                     setprop("payload/armament/MAW-active", 1);# resets every 1 seconds
                 } elsif (CWIOn) {
                     setprop("payload/armament/MAW-semiactive", 1);# resets every 1 seconds
+                    if (notification.Callsign != nil) setprop("payload/armament/MAW-semiactive-callsign", notification.Callsign);# resets every 1 seconds
                 }
                 MAW_elapsed = elapsed;
                 var appr = approached[notification.Callsign~notification.UniqueIdentity];
@@ -565,21 +574,18 @@ var DamageRecipient =
                 }
                 if (notification.Kind == CREATE and getprop("payload/armament/enable-craters") == 1 and statics["obj_"~notification.UniqueIdentity] == nil) {
                     if (notification.SecondaryKind == 0) {# TODO: make a hash with all the models
-                        var crater_model = getprop("payload/armament/models") ~ "crater_small.xml";
-                        var static = geo.put_model(crater_model, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading);
+                        var static = geo.put_model(crater_model0, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading);
                         if (static != nil) {
                             statics["obj_"~notification.UniqueIdentity] = [static, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading, notification.SecondaryKind];
                             #static is a PropertyNode inside /models
                         }
                     } elsif (notification.SecondaryKind == 1) {
-                        var crater_model = getprop("payload/armament/models") ~ "crater_big.xml";
-                        var static = geo.put_model(crater_model, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading);
+                        var static = geo.put_model(crater_model1, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading);
                         if (static != nil) {
                             statics["obj_"~notification.UniqueIdentity] = [static, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading, notification.SecondaryKind];
                         }
                     } elsif (notification.SecondaryKind == 2) {
-                        var crater_model = getprop("payload/armament/models") ~ "bomb_hit_smoke.xml";
-                        var static = geo.put_model(crater_model, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading);
+                        var static = geo.put_model(crater_model2, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading);
                         if (static != nil) {
                             statics["obj_"~notification.UniqueIdentity] = [static, notification.Position.lat(), notification.Position.lon(), notification.Position.alt(), notification.Heading, notification.SecondaryKind];
                         }
@@ -1252,7 +1258,7 @@ var processCallsigns = func () {
   var painted = 0;
   var paint_list = [];
   foreach (var player; players) {
-    if(player.getChild("valid") != nil and player.getChild("valid").getValue() == TRUE and player.getChild("callsign") != nil and player.getChild("callsign").getValue() != "" and player.getChild("callsign").getValue() != nil) {
+    if(player.getChild("valid") != nil and player.getChild("valid").getValue() == 1 and player.getChild("callsign") != nil and player.getChild("callsign").getValue() != "" and player.getChild("callsign").getValue() != nil) {
       var callsign = player.getChild("callsign").getValue();
       callsign_struct[callsign] = player;
       var str6 = player.getNode("sim/multiplay/generic/string[6]");
@@ -1267,6 +1273,7 @@ var processCallsigns = func () {
   if (getprop("sim/time/elapsed-sec")-MAW_elapsed > 1.1) {
       setprop("payload/armament/MAW-active", 0);# resets every 1.1 seconds without warning
       setprop("payload/armament/MAW-semiactive", 0);
+      setprop("payload/armament/MAW-semiactive-callsign", "");
   }
 
   # spike handling:
@@ -1313,7 +1320,7 @@ processCallsignsTimer.start();
 var code_ct = func () {
   #ANTIC
   if (getprop("payload/armament/msg")) {
-      setprop("sim/rendering/redout/enabled", TRUE);
+      setprop("sim/rendering/redout/enabled", 1);
       #call(func{fgcommand('dialog-close', multiplayer.dialog.dialog.prop())},nil,var err= []);# props.Node.new({"dialog-name": "location-in-air"}));
       if (!m28_auto) call(func{multiplayer.dialog.del();},nil,var err= []);
       if (!getprop("gear/gear[0]/wow")) {
@@ -1337,7 +1344,7 @@ code_ctTimer.simulatedTime = 1;
 
 
 
-setprop("/sim/failure-manager/display-on-screen", FALSE);
+setprop("/sim/failure-manager/display-on-screen", 0);
 
 code_ctTimer.start();
 
@@ -1357,6 +1364,22 @@ var re_init = func (node) {
   }
   stopLaunch();
   damageLog.push("Aircraft was repaired due to re-init.");
+
+  # Remove all 3D craters and re-place them. Due to re-init can remove some of them.
+
+  foreach (var thekey ; keys(statics)) {
+    var sta = statics[thekey];
+    if (sta[0] != nil) {
+        sta[0].remove();
+        if (sta[5] == 0) {# TODO: make a hash with all the models
+            sta[0] = geo.put_model(crater_model0, sta[1], sta[2], sta[3], sta[4]);
+        } elsif (sta[5] == 1) {
+            sta[0] = geo.put_model(crater_model1, sta[1], sta[2], sta[3], sta[4]);
+        } elsif (sta[5] == 2) {
+            sta[0] = geo.put_model(crater_model2, sta[1], sta[2], sta[3], sta[4]);
+        }
+    }
+  }
 }
 
 #==================================================================
@@ -1426,6 +1449,7 @@ setlistener("sim/signals/exit", writeDamageLog, 0, 0);
 #screen.property_display.add("payload/armament/MAW-bearing");
 #screen.property_display.add("payload/armament/MAW-active");
 #screen.property_display.add("payload/armament/MAW-semiactive");
+#screen.property_display.add("payload/armament/MAW-semiactive-callsign");
 #screen.property_display.add("payload/armament/MLW-bearing");
 #screen.property_display.add("payload/armament/MLW-count");
 #screen.property_display.add("payload/armament/MLW-launcher");
@@ -1435,7 +1459,7 @@ setlistener("sim/signals/exit", writeDamageLog, 0, 0);
 #screen.property_display.add("payload/armament/spike-gnd-02");
 #screen.property_display.add("payload/armament/spike-gnd-05");
 #screen.property_display.add("payload/armament/spike-gnd-06");
-#screen.property_display.add("payload/armament/spike-gnd-11");
+#screen.property_display.add("payload/armament/spike-gnd-17");
 #screen.property_display.add("payload/armament/spike-gnd-23");
 #screen.property_display.add("payload/armament/spike-gnd-p2");
 #screen.property_display.add("payload/armament/spike-gnd-nk");
